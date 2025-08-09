@@ -36,7 +36,7 @@ y=df['fraudulent']
 n_splits = 5
 threshold = 0.364
 
-# Model definition
+# Set model parameters
 rf = RandomForestClassifier(
     n_estimators=300,
     max_depth=20,
@@ -49,7 +49,7 @@ rf = RandomForestClassifier(
     criterion='entropy'
 )
 
-# Cross-validation setup
+# Cross-validation
 skf = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=42)
 train_metrics = []
 test_metrics = []
