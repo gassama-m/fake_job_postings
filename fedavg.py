@@ -10,23 +10,16 @@ from torch.utils.data import DataLoader, TensorDataset
 import time
 
 
-data = pd.read_excel("/content/drive/MyDrive/fake_job_postings/preprocessed_data.xlsx")
-data = data.iloc[:, [i for i in range(11, 22) if i != 17]]
+data = pd.read_excel("/content/preprocessed_datason.xlsx")
 
-X = data.drop(columns=['fraudulent'])
+X = X_final.toarray() if hasattr(X_final, "toarray") else X_final
+
 y = data['fraudulent'].values
 
-categorical_cols = X.select_dtypes(include=['object']).columns
-print("Categorical columns:", categorical_cols)
 
 
 
-X = pd.get_dummies(X, columns=categorical_cols)
-
-
-scaler = StandardScaler()
-X = scaler.fit_transform(X)
-
+# Non-IID Client Split using Dirichlet
 
 def create_non_iid_splits(X, y, num_clients=5, alpha=0.01, random_state=42):
     np.random.seed(random_state)
@@ -86,7 +79,7 @@ def train_fedavg(client_datasets, global_model, rounds=50, epochs=5, lr=0.01, ba
             optimizer = optim.SGD(model.parameters(), lr=lr)
             criterion = nn.CrossEntropyLoss()
 
-            # Convert to TensorDataset and DataLoader
+
             dataset = TensorDataset(torch.tensor(Xc, dtype=torch.float32),
                                     torch.tensor(yc, dtype=torch.long))
             loader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
@@ -103,7 +96,7 @@ def train_fedavg(client_datasets, global_model, rounds=50, epochs=5, lr=0.01, ba
             client_weights.append(model.state_dict())
             client_sizes.append(len(yc))
 
-       
+        # Aggregate weights (FedAvg)
         new_global_weights = {}
         for key in global_weights.keys():
             new_global_weights[key] = sum(client_weights[i][key]*client_sizes[i]
@@ -111,7 +104,7 @@ def train_fedavg(client_datasets, global_model, rounds=50, epochs=5, lr=0.01, ba
         global_weights = new_global_weights
         global_model.load_state_dict(global_weights)
 
-       
+        # Evaluate global model for early stopping
         with torch.no_grad():
             outputs = global_model(torch.tensor(X, dtype=torch.float32))
             preds = torch.argmax(outputs, dim=1).numpy()
@@ -119,7 +112,7 @@ def train_fedavg(client_datasets, global_model, rounds=50, epochs=5, lr=0.01, ba
 
         print(f"Round {r+1}/{rounds} completed | Accuracy: {acc*100:.2f}%")
 
-        # Early stopping logic
+        # Early stopping 
         if acc > best_acc:
             best_acc = acc
             rounds_no_improve = 0
@@ -133,7 +126,7 @@ def train_fedavg(client_datasets, global_model, rounds=50, epochs=5, lr=0.01, ba
     total_time = time.time() - total_start
 
     # Communication cost 
-    model_size_MB = total_params * 4 / (1024**2)  # float32 = 4 bytes
+    model_size_MB = total_params * 4 / (1024**2) 
     total_comm_MB = 2 * num_clients * (r+1) * model_size_MB
 
     print(f"\nFedAvg Global Model Accuracy: {best_acc*100:.2f}%")
@@ -143,7 +136,6 @@ def train_fedavg(client_datasets, global_model, rounds=50, epochs=5, lr=0.01, ba
     print(f"Total Communication Cost (send + receive): ~{total_comm_MB:.2f} MB")
 
     return best_acc, r+1, total_time, total_comm_MB
-
 
 global_model = MLP(input_dim=X.shape[1])
 best_acc, total_rounds, total_time, total_comm_MB = train_fedavg(
